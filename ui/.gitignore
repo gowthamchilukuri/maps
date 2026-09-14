@@ -7,3 +7,7 @@ amplify_outputs.json
 !.env.example
 *.log
 .DS_Store
+
+# amplify
+amplify_outputs*
+amplifyconfiguration*
