@@ -1,8 +1,13 @@
 version: 1
-# Repo-root monorepo config. Amplify Console app root should be `ui`.
-# Static Vite build only (no Cognito / ampx backend yet).
+# Monorepo: Amplify app root = ui. Deploys Gen2 backend (Cognito) then Vite UI.
 applications:
   - appRoot: ui
+    backend:
+      phases:
+        build:
+          commands:
+            - npm install --no-fund --no-audit --cache .npm --prefer-offline
+            - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
     frontend:
       phases:
         preBuild:
