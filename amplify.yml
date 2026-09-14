@@ -1,19 +1,18 @@
 version: 1
-# Amplify Hosting — set monorepo app root to `ui` in the console (or use this file at repo root).
-# No local laptop needed: Cognito is created by the backend build on Amplify.
+# Repo-root monorepo config. Amplify Console app root should be `ui`.
 applications:
   - appRoot: ui
     backend:
       phases:
         build:
           commands:
-            - npm ci --cache .npm --prefer-offline
+            - npm install --no-fund --no-audit --cache .npm --prefer-offline
             - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
     frontend:
       phases:
         preBuild:
           commands:
-            - npm ci --cache .npm --prefer-offline
+            - npm install --no-fund --no-audit --cache .npm --prefer-offline
         build:
           commands:
             - npm run build
