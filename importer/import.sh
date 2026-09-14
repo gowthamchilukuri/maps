@@ -130,7 +130,10 @@ if [[ "${FLAT_NODES}" == "1" || "${FLAT_NODES}" == "true" ]]; then
   FLAT_ARGS+=(--flat-nodes /tmp/osm2pgsql/flat-nodes.bin)
 fi
 
-log info "Running osm2pgsql (cache=${CACHE_MB}MB processes=${PROCESSES})…"
+log info "Running osm2pgsql (cache=${CACHE_MB}MB processes=${PROCESSES} flat_nodes=${FLAT_NODES:-false})…"
+# osm2pgsql is noisy — keep full log on disk, only push a short tail to job_logs on failure.
+OSM_LOG=/tmp/osm2pgsql-run.log
+set +e
 osm2pgsql \
   -H "$PGHOST" -P "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" \
   --create --slim -G --hstore \
@@ -139,7 +142,18 @@ osm2pgsql \
   --number-processes "$PROCESSES" \
   -S /openstreetmap-carto/openstreetmap-carto.style \
   "${FLAT_ARGS[@]}" \
-  "$PBF_PATH"
+  "$PBF_PATH" >"$OSM_LOG" 2>&1
+OSM_RC=$?
+set -e
+if [[ "$OSM_RC" -ne 0 ]]; then
+  log error "osm2pgsql exited ${OSM_RC}"
+  # Last lines usually contain the real reason (OOM, disk, SQL, SSL, …)
+  tail -n 40 "$OSM_LOG" | while IFS= read -r line || [[ -n "$line" ]]; do
+    log error "osm2pgsql: ${line:0:900}"
+  done
+  exit "$OSM_RC"
+fi
+log info "osm2pgsql finished OK"
 
 log info "Applying carto indexes + functions…"
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \

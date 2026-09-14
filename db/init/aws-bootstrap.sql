@@ -31,12 +31,13 @@ CREATE TABLE IF NOT EXISTS control.jobs (
   trigger     text        NOT NULL,
   remote_md5  text,
   local_md5   text,
+  task_ref    text,
   started_at  timestamptz,
   finished_at timestamptz,
   error       text,
   created_at  timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT jobs_status_check CHECK (
-    status IN ('pending', 'running', 'success', 'failed', 'skipped')
+    status IN ('pending', 'running', 'success', 'failed', 'skipped', 'cancelled')
   ),
   CONSTRAINT jobs_trigger_check CHECK (
     trigger IN ('manual', 'schedule', 'api')

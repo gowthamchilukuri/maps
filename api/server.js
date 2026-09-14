@@ -87,9 +87,24 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, {
+          "access-control-allow-origin": "*",
+          "access-control-allow-headers": "content-type,authorization",
+          "access-control-allow-methods": "GET,PUT,POST,OPTIONS",
+        });
+        res.end();
+        return;
+      }
       const bodyBuf = await readBody(req);
       const result = await apiHandler(toApiGatewayEvent(req, bodyBuf));
-      res.writeHead(result.statusCode || 200, result.headers || {});
+      const headers = {
+        "access-control-allow-origin": "*",
+        "access-control-allow-headers": "content-type,authorization",
+        "access-control-allow-methods": "GET,PUT,POST,OPTIONS",
+        ...(result.headers || {}),
+      };
+      res.writeHead(result.statusCode || 200, headers);
       res.end(result.body ?? "");
       return;
     }

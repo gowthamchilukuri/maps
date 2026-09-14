@@ -1,11 +1,24 @@
-import { ECSClient, RunTaskCommand } from "@aws-sdk/client-ecs";
-import { spawn } from "node:child_process";
+import { ECSClient, RunTaskCommand, StopTaskCommand } from "@aws-sdk/client-ecs";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { flatNodesFor } from "./areas.js";
 import { query } from "./db.js";
 
 const region =
   process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "eu-central-1";
+
+let schemaReady = false;
+async function ensureJobSchema() {
+  if (schemaReady) return;
+  await query(`ALTER TABLE control.jobs ADD COLUMN IF NOT EXISTS task_ref text`);
+  await query(`ALTER TABLE control.jobs DROP CONSTRAINT IF EXISTS jobs_status_check`);
+  await query(`
+    ALTER TABLE control.jobs ADD CONSTRAINT jobs_status_check CHECK (
+      status IN ('pending', 'running', 'success', 'failed', 'skipped', 'cancelled')
+    )
+  `);
+  schemaReady = true;
+}
 
 export function importBackend() {
   const explicit = (process.env.IMPORT_BACKEND || "").toLowerCase().trim();
@@ -35,6 +48,18 @@ export async function getSettings() {
   };
 }
 
+export async function setSchedulerEnabled(enabled) {
+  const cur = await getSettings();
+  await query(
+    `INSERT INTO control.settings (id, area, interval_hours, enabled, updated_at)
+     VALUES (1, $1, $2, $3, now())
+     ON CONFLICT (id) DO UPDATE
+       SET enabled = EXCLUDED.enabled, updated_at = now()`,
+    [cur.area, cur.interval_hours, Boolean(enabled)]
+  );
+  return getSettings();
+}
+
 export async function runningJobId() {
   const { rows } = await query(
     `SELECT id::text FROM control.jobs
@@ -45,6 +70,7 @@ export async function runningJobId() {
 }
 
 export async function createJob(area, trigger) {
+  await ensureJobSchema();
   const jobId = randomUUID();
   await query(
     `INSERT INTO control.jobs (id, area, status, trigger, created_at)
@@ -52,6 +78,15 @@ export async function createJob(area, trigger) {
     [jobId, area, trigger]
   );
   return jobId;
+}
+
+async function saveTaskRef(jobId, taskRef) {
+  await ensureJobSchema();
+  if (!taskRef) return;
+  await query(`UPDATE control.jobs SET task_ref = $2 WHERE id = $1::uuid`, [
+    jobId,
+    taskRef,
+  ]);
 }
 
 async function startImporterEcs(jobId, area, force = false) {
@@ -91,7 +126,7 @@ async function startImporterEcs(jobId, area, force = false) {
               { name: "OSM_AREA", value: area },
               { name: "FORCE", value: force ? "true" : "false" },
               { name: "JOB_ID", value: jobId },
-              { name: "CACHE_MB", value: process.env.CACHE_MB || "2048" },
+              { name: "CACHE_MB", value: process.env.CACHE_MB || "1024" },
               { name: "FLAT_NODES", value: flatNodesFor(area) },
               { name: "PGSSLMODE", value: process.env.PGSSLMODE || "require" },
             ],
@@ -107,6 +142,7 @@ async function startImporterEcs(jobId, area, force = false) {
     err.statusCode = 500;
     throw err;
   }
+  await saveTaskRef(jobId, taskArn);
   return { backend: "ecs", taskArn };
 }
 
@@ -142,7 +178,7 @@ function startImporterDocker(jobId, area, force = false) {
     "-e",
     `JOB_ID=${jobId}`,
     "-e",
-    `CACHE_MB=${process.env.CACHE_MB || "2048"}`,
+    `CACHE_MB=${process.env.CACHE_MB || "1024"}`,
     "-e",
     `FLAT_NODES=${flatNodesFor(area)}`,
     "-v",
@@ -151,14 +187,82 @@ function startImporterDocker(jobId, area, force = false) {
     `${hostDir}/data/import-tmp:/tmp/osm2pgsql`,
     image,
   ];
-  const child = spawn("docker", args, { stdio: "ignore", detached: true });
-  child.unref();
-  return { backend: "docker", image };
+  const result = spawnSync("docker", args, { encoding: "utf8" });
+  if (result.status !== 0) {
+    const err = new Error(result.stderr || result.stdout || "docker run failed");
+    err.statusCode = 500;
+    throw err;
+  }
+  const containerId = (result.stdout || "").trim();
+  saveTaskRef(jobId, containerId).catch(() => {});
+  return { backend: "docker", image, containerId };
 }
 
 export async function startImporter(jobId, area, force = false) {
   if (importBackend() === "ecs") return startImporterEcs(jobId, area, force);
   return startImporterDocker(jobId, area, force);
+}
+
+/** Stop a pending/running import (ECS StopTask or docker stop). */
+export async function stopImporter(jobId) {
+  await ensureJobSchema();
+  const { rows } = await query(
+    `SELECT id::text, status, task_ref
+     FROM control.jobs WHERE id = $1::uuid`,
+    [jobId]
+  );
+  const job = rows[0];
+  if (!job) {
+    const err = new Error("job not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (!["pending", "running"].includes(job.status)) {
+    const err = new Error(`job is already ${job.status}`);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  const backend = importBackend();
+  if (backend === "ecs") {
+    const cluster = process.env.ECS_CLUSTER;
+    if (!cluster) {
+      const err = new Error("ECS_CLUSTER is required to stop tasks");
+      err.statusCode = 500;
+      throw err;
+    }
+    if (!job.task_ref) {
+      const err = new Error(
+        "No ECS task ARN stored for this job (started before stop support). Stop it in ECS console."
+      );
+      err.statusCode = 409;
+      throw err;
+    }
+    const client = new ECSClient({ region });
+    await client.send(
+      new StopTaskCommand({
+        cluster,
+        task: job.task_ref,
+        reason: "Stopped from Sigeo map console",
+      })
+    );
+  } else if (job.task_ref) {
+    spawnSync("docker", ["stop", job.task_ref], { encoding: "utf8" });
+  }
+
+  await query(
+    `UPDATE control.jobs
+     SET status = 'cancelled', finished_at = now(),
+         error = COALESCE(error, 'stopped by user')
+     WHERE id = $1::uuid`,
+    [jobId]
+  );
+  await query(
+    `INSERT INTO control.job_logs (job_id, level, message)
+     VALUES ($1::uuid, 'info', 'Job cancelled by user')`,
+    [jobId]
+  );
+  return { job_id: jobId, status: "cancelled", backend };
 }
 
 export async function scheduledTick() {

@@ -5,17 +5,18 @@ import {
   getSettings,
   importBackend,
   runningJobId,
+  setSchedulerEnabled,
   startImporter,
+  stopImporter,
 } from "./jobs.js";
 
 function json(statusCode, body, extraHeaders = {}) {
+  // CORS is configured on API Gateway HTTP API (needed for JWT 401 responses).
+  // Do not also set ACAO here — browsers reject duplicate Access-Control-Allow-Origin.
   return {
     statusCode,
     headers: {
       "content-type": "application/json",
-      "access-control-allow-origin": "*",
-      "access-control-allow-headers": "content-type,authorization",
-      "access-control-allow-methods": "GET,PUT,POST,OPTIONS",
       ...extraHeaders,
     },
     body: JSON.stringify(body),
@@ -170,6 +171,23 @@ async function handle(method, path, event) {
     const jobId = await createJob(area, trigger);
     const meta = (await startImporter(jobId, area, Boolean(body.force))) || {};
     return json(200, { job_id: jobId, area, status: "pending", ...meta });
+  }
+
+  if (method === "POST" && path === "/api/jobs/stop") {
+    const body = parseBody(event);
+    const jobId = body.job_id || (await runningJobId());
+    if (!jobId) {
+      return json(404, { error: "no running job to stop" });
+    }
+    return json(200, await stopImporter(jobId));
+  }
+
+  if (method === "POST" && path === "/api/scheduler/stop") {
+    return json(200, await setSchedulerEnabled(false));
+  }
+
+  if (method === "POST" && path === "/api/scheduler/start") {
+    return json(200, await setSchedulerEnabled(true));
   }
 
   if (method === "GET" && path === "/api/db/info") {

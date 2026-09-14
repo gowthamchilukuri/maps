@@ -1,33 +1,54 @@
-# Amplify Hosting (static UI — no Cognito yet)
+# Amplify Hosting + Cognito UI
 
-Console + Git only. No Amplify Gen2 backend / `ampx` / CDK bootstrap required.
+Monorepo app root: **`ui`**. Root `amplify.yml` runs Gen2 backend (`ampx pipeline-deploy`) then Vite.
 
-Your control API:
+Control API (account `663505294123`):
 
 `https://lfvy5sv7gj.execute-api.eu-south-1.amazonaws.com`
 
 ---
 
-## 1. Push latest build config
+## Env (Amplify Console)
 
-Ensure the repo has root `amplify.yml` with `appRoot: ui` and **frontend-only** build (`npm install` + `npm run build`). No `ampx pipeline-deploy`.
+| Name | Value |
+|------|--------|
+| `VITE_SIGEO_MAP_API_BASE` | `https://lfvy5sv7gj.execute-api.eu-south-1.amazonaws.com` |
 
 ---
 
-## 2. Create / update the Amplify app
+## Lock API with Cognito JWT (CloudShell)
 
-1. **AWS Amplify** → Host web app (any account/region is fine for static hosting).
-2. Connect GitLab/GitHub → branch **`main`**.
-3. App root: **`ui`**.
-4. Environment variable:
+Run in the **API account** (`663505294123`), region `eu-south-1`.
 
-   | Name | Value |
-   |------|--------|
-   | `VITE_SIGEO_MAP_API_BASE` | `https://lfvy5sv7gj.execute-api.eu-south-1.amazonaws.com` |
+1. Amplify Console → Backend / Authentication → copy **User pool ID** and **App client ID**  
+   (or from build artifact `amplify_outputs.json`: `auth.user_pool_id`, `auth.user_pool_client_id`).
 
-5. Deploy. Open the Amplify URL → control panel (settings, Run now, jobs, logs).
+2. Upload `aws/attach-cognito-authorizer.sh` to CloudShell (or clone the repo), then:
 
-The API currently accepts unauthenticated calls. Auth (Cognito) can be added later.
+```bash
+export AWS_REGION=eu-south-1
+export USER_POOL_ID='eu-south-1_XXXXXXXX'   # paste
+export CLIENT_ID='xxxxxxxxxxxxxxxxxxxxxxxxxx'  # paste
+# If Cognito is in another account but same region, still fine — JWT validates by issuer URL.
+# export COGNITO_REGION=eu-south-1
+
+chmod +x attach-cognito-authorizer.sh
+./attach-cognito-authorizer.sh
+```
+
+3. Verify:
+
+```bash
+# 200 — public
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  https://lfvy5sv7gj.execute-api.eu-south-1.amazonaws.com/api/health
+
+# 401 — locked
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  https://lfvy5sv7gj.execute-api.eu-south-1.amazonaws.com/api/areas
+```
+
+Signed-in Amplify UI should still work (it sends the Bearer id token).
 
 ---
 
@@ -35,6 +56,7 @@ The API currently accepts unauthenticated calls. Auth (Cognito) can be added lat
 
 | Issue | Fix |
 |-------|-----|
-| Build still runs `ampx` | Push the new `amplify.yml` (no `backend:` section); in Console, confirm build settings match repo |
-| UI loads but API errors | Check `VITE_SIGEO_MAP_API_BASE` (rebuild after changing env); CORS on API |
-| Wrong AWS account | Static hosting does not need CDK bootstrap; ignore older Cognito/SSM errors |
+| UI 401 after lock | Confirm UI redeployed with real `amplify_outputs` + Authenticator; browser sends `Authorization` |
+| curl health 401 | Re-run attach script (creates public `GET /api/health`) |
+| Authorizer wrong pool | Re-run script with correct `USER_POOL_ID` / `CLIENT_ID` (script updates existing authorizer) |
+| Cognito vs API account differ | OK for JWT; issuer uses pool id from Cognito’s region |

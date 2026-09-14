@@ -128,6 +128,44 @@ export default function ControlPanel({ email, onSignOut }: Props) {
     }
   };
 
+  const stopJob = async () => {
+    if (!confirm("Stop the running import? The ECS/docker task will be terminated.")) return;
+    setBusy(true);
+    try {
+      await api("/api/jobs/stop", {
+        method: "POST",
+        body: JSON.stringify({ job_id: currentJobId || undefined }),
+      });
+      setSettingsMsg(`Import stopped · ${new Date().toLocaleTimeString()}`);
+      await refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setScheduler = async (on: boolean) => {
+    setBusy(true);
+    try {
+      const s = await api(on ? "/api/scheduler/start" : "/api/scheduler/stop", {
+        method: "POST",
+        body: "{}",
+      });
+      setEnabled(Boolean(s.enabled));
+      setSettingsMsg(
+        `Scheduler ${s.enabled ? "ON" : "OFF"} · ${new Date().toLocaleTimeString()}`
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const jobRunning = job?.status === "pending" || job?.status === "running";
+  const anyRunning = jobs.some((j) => j.status === "pending" || j.status === "running");
+
   useEffect(() => {
     loadAreas()
       .then(() => loadSettings())
@@ -198,19 +236,47 @@ export default function ControlPanel({ email, onSignOut }: Props) {
               onChange={(e) => setEnabled(e.target.checked)}
               style={{ width: "auto" }}
             />
-            Scheduler enabled
+            Scheduler enabled (also use buttons below)
           </label>
+
+          <div className="row">
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || enabled}
+              onClick={() => setScheduler(true)}
+            >
+              Start scheduler
+            </button>
+            <button
+              type="button"
+              className="danger"
+              disabled={busy || !enabled}
+              onClick={() => setScheduler(false)}
+            >
+              Stop scheduler
+            </button>
+          </div>
 
           <div className="row">
             <button type="button" onClick={() => saveSettings().catch((e) => alert(e.message))}>
               Save settings
             </button>
-            <button type="button" className="secondary" disabled={busy} onClick={runNow}>
+            <button type="button" className="secondary" disabled={busy || anyRunning} onClick={runNow}>
               Run now
+            </button>
+            <button
+              type="button"
+              className="danger"
+              disabled={busy || !anyRunning}
+              onClick={stopJob}
+            >
+              Stop import
             </button>
           </div>
           <p className="meta" style={{ marginTop: "0.75rem" }}>
             {settingsMsg}
+            {enabled ? " · hourly scheduler active" : " · hourly scheduler paused"}
           </p>
 
           <h2 style={{ marginTop: "1.25rem" }}>Database</h2>
@@ -249,6 +315,13 @@ export default function ControlPanel({ email, onSignOut }: Props) {
           <h2>
             Latest job <span className={`badge ${job?.status || ""}`}>{job?.status || "—"}</span>
           </h2>
+          {jobRunning && (
+            <div className="row" style={{ marginTop: 0, marginBottom: "0.75rem" }}>
+              <button type="button" className="danger" disabled={busy} onClick={stopJob}>
+                Stop this import
+              </button>
+            </div>
+          )}
           <div className="meta pre">
             {job
               ? `id=${job.id}\narea=${job.area} trigger=${job.trigger}\nmd5=${job.remote_md5 || "—"}\nstarted=${job.started_at || "—"} finished=${job.finished_at || "—"}\n${job.error ? `error=${job.error}` : ""}`

@@ -116,9 +116,18 @@ button.secondary {
   background: #3a4550;
 }
 
+button.danger {
+  background: var(--err);
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.badge.cancelled {
+  background: #5a6570;
+  color: #ddd;
 }
 
 .badge {

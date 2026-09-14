@@ -86,6 +86,7 @@ TASK_DEF="$(cat <<EOF
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "2048",
   "memory": "8192",
+  "ephemeralStorage": { "sizeInGiB": 60 },
   "executionRoleArn": "${EXEC_ROLE_ARN}",
   "taskRoleArn": "${TASK_ROLE_ARN}",
   "containerDefinitions": [{
@@ -100,7 +101,8 @@ TASK_DEF="$(cat <<EOF
       {"name": "PGPASSWORD", "value": "${PGPASSWORD}"},
       {"name": "PGSSLMODE", "value": "require"},
       {"name": "OSM_AREA", "value": "monaco"},
-      {"name": "CACHE_MB", "value": "2048"}
+      {"name": "CACHE_MB", "value": "1024"},
+      {"name": "FLAT_NODES", "value": "true"}
     ],
     "logConfiguration": {
       "logDriver": "awslogs",

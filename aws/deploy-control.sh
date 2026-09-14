@@ -54,7 +54,7 @@ aws iam put-role-policy --role-name "$LAMBDA_ROLE" --policy-name sigeo-map-lambd
     \"Version\": \"2012-10-17\",
     \"Statement\": [
       {\"Effect\":\"Allow\",\"Action\":[\"secretsmanager:GetSecretValue\"],\"Resource\":[\"${SECRET_ARN}\",\"${SECRET_ARN}*\"]},
-      {\"Effect\":\"Allow\",\"Action\":[\"ecs:RunTask\",\"ecs:DescribeTasks\",\"ecs:TagResource\"],\"Resource\":\"*\"},
+      {\"Effect\":\"Allow\",\"Action\":[\"ecs:RunTask\",\"ecs:StopTask\",\"ecs:DescribeTasks\",\"ecs:ListTasks\",\"ecs:TagResource\"],\"Resource\":\"*\"},
       {\"Effect\":\"Allow\",\"Action\":[\"iam:PassRole\"],\"Resource\":[${PASS_RESOURCES}]}
     ]
   }"
