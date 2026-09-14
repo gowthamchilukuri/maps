@@ -13,6 +13,8 @@ applications:
         preBuild:
           commands:
             - npm install --no-fund --no-audit --cache .npm --prefer-offline
+            # Ensure Cognito config exists for Amplify.configure (written by pipeline-deploy)
+            - npx ampx generate outputs --branch $AWS_BRANCH --app-id $AWS_APP_ID
         build:
           commands:
             - npm run build

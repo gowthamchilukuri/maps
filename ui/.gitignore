@@ -8,6 +8,7 @@ amplify_outputs.json
 *.log
 .DS_Store
 
-# amplify
-amplify_outputs*
+# amplify (keep example for local/docs)
+amplify_outputs.json
 amplifyconfiguration*
+!amplify_outputs.example.json

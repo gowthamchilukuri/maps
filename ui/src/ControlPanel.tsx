@@ -15,7 +15,12 @@ type Job = {
 };
 type LogLine = { id: number; ts?: string; level: string; message: string };
 
-export default function ControlPanel() {
+type Props = {
+  email: string;
+  onSignOut?: () => void;
+};
+
+export default function ControlPanel({ email, onSignOut }: Props) {
   const [areaPresets, setAreaPresets] = useState<AreaPreset[]>([]);
   const [areaPreset, setAreaPreset] = useState("monaco");
   const [intervalHours, setIntervalHours] = useState(12);
@@ -147,7 +152,13 @@ export default function ControlPanel() {
       <header>
         <div>
           <h1>Sigeo map service</h1>
-          <p>Geofabrik → PostGIS control console</p>
+          <p>Geofabrik → PostGIS · Cognito sign-in</p>
+        </div>
+        <div className="user">
+          <span>{email}</span>
+          <button type="button" className="secondary" style={{ width: "auto" }} onClick={onSignOut}>
+            Sign out
+          </button>
         </div>
       </header>
       <main>

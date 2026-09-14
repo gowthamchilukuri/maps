@@ -1,12 +1,19 @@
+import { fetchAuthSession } from "aws-amplify/auth";
+
 /** Control API base (Lambda HTTP API or local docker). */
 export const API_BASE = (
   import.meta.env.VITE_SIGEO_MAP_API_BASE || "http://localhost:8092"
 ).replace(/\/$/, "");
 
 export async function api(path: string, opts: RequestInit = {}) {
+  const session = await fetchAuthSession();
+  const token = session.tokens?.idToken?.toString();
   const url = path.startsWith("http") ? path : API_BASE + path;
   const headers = new Headers(opts.headers || {});
   headers.set("Content-Type", "application/json");
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
     const t = await res.text();
