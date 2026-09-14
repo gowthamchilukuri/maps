@@ -4,7 +4,7 @@
 set -euo pipefail
 export AWS_PAGER=""
 
-REGION="${AWS_REGION:-eu-central-1}"
+REGION="${AWS_REGION:-eu-south-1}"
 API_NAME="${API_NAME:-sigeo-map-http}"
 USER_POOL_ID="${USER_POOL_ID:?Set USER_POOL_ID from amplify_outputs.json auth.user_pool_id}"
 CLIENT_ID="${CLIENT_ID:?Set CLIENT_ID from amplify_outputs.json auth.user_pool_client_id}"
