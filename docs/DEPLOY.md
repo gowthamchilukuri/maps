@@ -241,28 +241,15 @@ Creates/updates:
 
 Script prints `API health: https://….execute-api.…amazonaws.com/api/health`.
 
-### 2.6 Admin UI — Amplify (manual)
+### 2.6 Admin UI — Amplify Hosting (manual)
 
-The console is **React + Vite** with **Cognito email/password** (Amplify Gen2). See **[UI-AMPLIFY.md](UI-AMPLIFY.md)** for the full flow.
+The console is **React + Vite** (static hosting; Cognito can be added later). See **[UI-AMPLIFY.md](UI-AMPLIFY.md)**.
 
-Short path:
-
-```bash
-cd ui
-npm install
-npx ampx sandbox --once
-# set VITE_SIGEO_MAP_API_BASE to API Gateway URL in .env / Amplify env
-```
-
-1. Connect repo to **Amplify Hosting** (app root `ui`, see root `amplify.yml`).
+1. Connect repo to **Amplify Hosting** (app root `ui`, see root `amplify.yml` — frontend-only build).
 2. Set env `VITE_SIGEO_MAP_API_BASE` to the API Gateway URL.
-3. Attach JWT authorizer (once):
+3. Deploy and open the Amplify URL.
 
-```bash
-export USER_POOL_ID=…   # from amplify_outputs.json
-export CLIENT_ID=…
-./aws/attach-cognito-authorizer.sh
-```
+Optional later: Cognito + `./aws/attach-cognito-authorizer.sh`.
 
 ### 2.7 First import on AWS (manual)
 
@@ -368,7 +355,7 @@ Even with GitLab working, these stay human decisions:
 | Rotate DB password | Update Secrets Manager (+ re-run cloudshell-setup if task def embeds password) |
 | Stop scheduled imports | UI: uncheck “Scheduled imports”, or disable EventBridge rule `sigeo-map-hourly` |
 | Serve / host admin UI | Amplify Hosting (`ui/`) — see [UI-AMPLIFY.md](UI-AMPLIFY.md) |
-| Cognito JWT on API Gateway | `./aws/attach-cognito-authorizer.sh` once |
+| Cognito JWT on API Gateway | optional later (`attach-cognito-authorizer.sh`) |
 
 ---
 
@@ -382,7 +369,7 @@ Even with GitLab working, these stay human decisions:
 5. cloudshell-setup.sh                 ← MANUAL (needs image in ECR)
 6. Set remaining GitLab vars (ECS_*)   ← MANUAL
 7. deploy-control.sh OR merge api/     ← manual script or GitLab deploy-control
-8. Amplify Hosting + Cognito authorizer← MANUAL (see UI-AMPLIFY.md)
+8. Amplify Hosting (static UI) ← MANUAL (see UI-AMPLIFY.md)
 9. First import (monaco)               ← MANUAL (UI / GitLab import / CLI)
 10. Change settings to real area       ← MANUAL when ready
 ```
