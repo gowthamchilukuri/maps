@@ -11,3 +11,4 @@ ui/.env
 .DS_Store
 *.zip
 __pycache__/
+sigeo-map-control.zip
