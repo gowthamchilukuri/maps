@@ -35,8 +35,8 @@ variables:
 # ---------------------------------------------------------------------------
 build-importer:
   stage: build
-  # Debian-based (not Alpine) — Alpine pyexpat/musl breaks both apk and pip awscli
-  image: docker:24-bookworm
+  # Official docker:* images are Alpine-only (no *-bookworm tag). Use Debian + docker.io client.
+  image: debian:bookworm-slim
   services:
     - name: docker:24-dind
       alias: docker
@@ -60,7 +60,9 @@ build-importer:
       allow_failure: true
   before_script:
     - apt-get update -qq
-    - apt-get install -y -qq --no-install-recommends awscli ca-certificates
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends awscli docker.io ca-certificates
+    - aws --version
+    - docker --version
     - |
       if [ -z "${ECR_REGISTRY:-}" ]; then
         echo "ERROR: set CI/CD variable ECR_REGISTRY=ACCOUNT.dkr.ecr.REGION.amazonaws.com" >&2
