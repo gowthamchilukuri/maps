@@ -1,0 +1,138 @@
+# Sigeo-map-service — GitLab CI
+#
+# ECR: this pipeline is the only place that builds/pushes the importer image.
+# ONE-TIME elsewhere: RDS, Secrets Manager, ./aws/cloudshell-setup.sh (ECS).
+# See docs/DEPLOY.md
+#
+# CI/CD variables (Settings → CI/CD → Variables):
+#   AWS_DEFAULT_REGION     e.g. eu-south-1
+#   AWS_ACCESS_KEY_ID
+#   AWS_SECRET_ACCESS_KEY
+#   ECR_REGISTRY           ACCOUNT.dkr.ecr.REGION.amazonaws.com
+#   ECS_SUBNETS / ECS_SECURITY_GROUPS  (only for deploy-control + import)
+#
+# Do not store the database password here.
+
+stages:
+  - build
+  - deploy
+  - import
+
+default:
+  interruptible: true
+
+variables:
+  AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-eu-south-1}
+  IMPORTER_IMAGE: sigeo-map-importer
+  ECS_CLUSTER: sigeo-map
+  ECS_TASK_DEFINITION: sigeo-map-importer
+  # Docker-in-Docker (GitLab shared runners)
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_DRIVER: overlay2
+
+# ---------------------------------------------------------------------------
+# Automatic (+ optional manual Play): build importer → push to ECR
+# ---------------------------------------------------------------------------
+build-importer:
+  stage: build
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375
+  rules:
+    # On default branch when importer (or this CI file) changes
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - importer/**/*
+        - .gitlab-ci.yml
+    # Merge requests that touch importer
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - importer/**/*
+    # First push / rebuild anytime: Run pipeline → Play this job
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
+  before_script:
+    - apk add --no-cache aws-cli
+    - |
+      if [ -z "${ECR_REGISTRY:-}" ]; then
+        echo "ERROR: set CI/CD variable ECR_REGISTRY=ACCOUNT.dkr.ecr.REGION.amazonaws.com" >&2
+        exit 1
+      fi
+    - |
+      echo "Ensuring ECR repository ${IMPORTER_IMAGE} exists in ${AWS_DEFAULT_REGION}…"
+      aws ecr describe-repositories \
+        --repository-names "$IMPORTER_IMAGE" \
+        --region "$AWS_DEFAULT_REGION" >/dev/null 2>&1 \
+      || aws ecr create-repository \
+        --repository-name "$IMPORTER_IMAGE" \
+        --region "$AWS_DEFAULT_REGION" \
+        --image-scanning-configuration scanOnPush=true \
+        --encryption-configuration encryptionType=AES256
+    - |
+      aws ecr get-login-password --region "$AWS_DEFAULT_REGION" \
+        | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+  script:
+    - echo "Building ${ECR_REGISTRY}/${IMPORTER_IMAGE}:${CI_COMMIT_SHORT_SHA}"
+    - docker build -t "$ECR_REGISTRY/$IMPORTER_IMAGE:$CI_COMMIT_SHORT_SHA" importer
+    - docker tag "$ECR_REGISTRY/$IMPORTER_IMAGE:$CI_COMMIT_SHORT_SHA"
+        "$ECR_REGISTRY/$IMPORTER_IMAGE:latest"
+    - docker push "$ECR_REGISTRY/$IMPORTER_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - docker push "$ECR_REGISTRY/$IMPORTER_IMAGE:latest"
+    - |
+      echo "Pushed:"
+      echo "  $ECR_REGISTRY/$IMPORTER_IMAGE:$CI_COMMIT_SHORT_SHA"
+      echo "  $ECR_REGISTRY/$IMPORTER_IMAGE:latest"
+
+# ---------------------------------------------------------------------------
+# Automatic on api changes: update Lambdas + HTTP API
+# ---------------------------------------------------------------------------
+deploy-control:
+  stage: deploy
+  image:
+    name: amazon/aws-cli:latest
+    entrypoint: [""]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - api/**/*
+        - aws/deploy-control.sh
+  script:
+    - yum install -y unzip tar gzip python3 npm zip >/dev/null 2>&1 || true
+    - cd aws && chmod +x deploy-control.sh && ./deploy-control.sh
+  needs: []
+
+# ---------------------------------------------------------------------------
+# MANUAL: start one Fargate import (Play after Run pipeline)
+# ---------------------------------------------------------------------------
+import:
+  stage: import
+  image:
+    name: amazon/aws-cli:latest
+    entrypoint: [""]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+    - when: never
+  allow_failure: true
+  variables:
+    OSM_AREA: monaco
+    FORCE: "false"
+  script:
+    - |
+      aws ecs run-task \
+        --region "$AWS_DEFAULT_REGION" \
+        --cluster "$ECS_CLUSTER" \
+        --launch-type FARGATE \
+        --task-definition "$ECS_TASK_DEFINITION" \
+        --network-configuration "awsvpcConfiguration={subnets=[$ECS_SUBNETS],securityGroups=[$ECS_SECURITY_GROUPS],assignPublicIp=ENABLED}" \
+        --overrides "{\"containerOverrides\":[{\"name\":\"importer\",\"environment\":[
+          {\"name\":\"OSM_AREA\",\"value\":\"${OSM_AREA}\"},
+          {\"name\":\"FORCE\",\"value\":\"${FORCE}\"}
+        ]}]}"
+  needs: []

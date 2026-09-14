@@ -1,0 +1,206 @@
+:root {
+  --bg: #14181c;
+  --panel: #1e252c;
+  --text: #e8ecef;
+  --muted: #8b9aab;
+  --accent: #2f80ed;
+  --ok: #27c093;
+  --warn: #e6a23c;
+  --err: #e55353;
+  --border: #2c3640;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+header p {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.user {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+main {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  min-height: calc(100vh - 72px);
+}
+
+@media (max-width: 900px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0.6rem 0 0.25rem;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  flex-wrap: wrap;
+}
+
+button {
+  border: 0;
+  border-radius: 4px;
+  padding: 0.5rem 0.85rem;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #3a4550;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge.running,
+.badge.pending {
+  background: #2a3a55;
+  color: #8bb4ff;
+}
+
+.badge.success {
+  background: #1f3d30;
+  color: var(--ok);
+}
+
+.badge.failed {
+  background: #3d1f2a;
+  color: var(--err);
+}
+
+.badge.skipped {
+  background: #3d3420;
+  color: var(--warn);
+}
+
+.meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.meta.pre {
+  white-space: pre-wrap;
+}
+
+#logs {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  background: #0f1317;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  height: calc(100vh - 220px);
+  min-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.log-err {
+  color: var(--err);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.35rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Amplify Authenticator sits on dark page */
+[data-amplify-authenticator] {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

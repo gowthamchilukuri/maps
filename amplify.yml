@@ -1,0 +1,25 @@
+version: 1
+# Amplify Hosting — set app root to `ui` in the Amplify console (monorepo).
+applications:
+  - appRoot: ui
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+            # amplify_outputs.json is produced by Amplify Gen2 backend build,
+            # or committed from sandbox for frontend-only pipelines.
+            - |
+              if [ ! -f amplify_outputs.json ]; then
+                cp amplify_outputs.example.json amplify_outputs.json
+              fi
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: dist
+        files:
+          - "**/*"
+      cache:
+        paths:
+          - node_modules/**/*

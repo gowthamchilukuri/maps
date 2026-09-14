@@ -1,0 +1,13 @@
+.env
+data/pbf/*.osm.pbf
+data/pbf/*.partial
+data/import-tmp/
+api/node_modules/
+ui/node_modules/
+ui/dist/
+ui/.amplify/
+ui/amplify_outputs.json
+ui/.env
+.DS_Store
+*.zip
+__pycache__/

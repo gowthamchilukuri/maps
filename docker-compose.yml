@@ -1,0 +1,84 @@
+name: sigeo-map-service
+
+services:
+  postgis:
+    image: imresamu/postgis:16-3.5
+    platform: linux/arm64
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gis}
+      POSTGRES_USER: ${POSTGRES_USER:-_renderd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - ./data/pbf:/pbf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - work_mem=256MB
+      - -c
+      - maintenance_work_mem=1GB
+    restart: unless-stopped
+    networks: [app-net]
+
+  importer:
+    profiles: ["import"]
+    image: sigeo-map-importer:latest
+    build:
+      context: ./importer
+    environment:
+      PGHOST: postgis
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-gis}
+      PGUSER: ${POSTGRES_USER:-_renderd}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      OSM_AREA: ${OSM_AREA:-monaco}
+      CACHE_MB: ${CACHE_MB:-2048}
+      FORCE: ${FORCE:-false}
+      JOB_ID: ${JOB_ID:-}
+    volumes:
+      - ./data/pbf:/pbf
+      - ./data/import-tmp:/tmp/osm2pgsql
+    depends_on:
+      postgis:
+        condition: service_healthy
+    networks: [app-net]
+
+  api:
+    build:
+      context: ./api
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-_renderd}:${POSTGRES_PASSWORD:-changeme}@postgis:5432/${POSTGRES_DB:-gis}
+      IMPORT_BACKEND: docker
+      HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:-${PWD}}
+      IMPORTER_IMAGE: sigeo-map-importer:latest
+      DOCKER_NETWORK: sigeo-map-net
+      DEFAULT_AREA: ${OSM_AREA:-monaco}
+      DEFAULT_INTERVAL_HOURS: ${DEFAULT_INTERVAL_HOURS:-12}
+      PORT: "8092"
+    ports:
+      - "8092:8092"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [app-net]
+
+volumes:
+  postgis_data:
+
+networks:
+  app-net:
+    name: sigeo-map-net
