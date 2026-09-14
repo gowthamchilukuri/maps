@@ -58,7 +58,9 @@ build-importer:
       when: manual
       allow_failure: true
   before_script:
-    - apk add --no-cache aws-cli
+    # apk aws-cli on Alpine breaks (pyexpat musl symbol error) — use pip awscli instead
+    - apk add --no-cache python3 py3-pip
+    - pip3 install --no-cache-dir --break-system-packages "awscli>=1.32,<2"
     - |
       if [ -z "${ECR_REGISTRY:-}" ]; then
         echo "ERROR: set CI/CD variable ECR_REGISTRY=ACCOUNT.dkr.ecr.REGION.amazonaws.com" >&2
