@@ -13,7 +13,7 @@ This doc covers **what you run by hand once**, **what GitLab can automate later*
 | ECR importer image | Docker image that downloads Geofabrik + runs osm2pgsql | **GitLab only** — job `build-importer` |
 | ECS Fargate task | Runs the importer on AWS | **Manual** once via `cloudshell-setup.sh` |
 | Lambda + API Gateway + EventBridge | Control API + hourly scheduler | GitLab `deploy-control` **or** `deploy-control.sh` |
-| OSM import run | Actually load an extract into the DB | **Manual** (UI / GitLab `import` / `aws ecs run-task`) |
+| OSM import run | Load extract → PostGIS (+ optional Planetiler/Nominatim) | **Manual** (UI / GitLab `import` / `aws ecs run-task`) — see **[PIPELINE.md](PIPELINE.md)** |
 | Admin UI | Browser console | Local `serve` or S3 (optional) |
 
 **Important:** The hourly EventBridge rule already starts imports when settings allow it. Do **not** also enable a GitLab schedule on the `import` job unless you turn the EventBridge rule off — you would get double imports.

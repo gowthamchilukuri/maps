@@ -15,6 +15,7 @@ LAMBDA_SCHED="sigeo-map-scheduler"
 API_NAME="sigeo-map-http"
 SUBNET_CSV="${ECS_SUBNETS:?Set ECS_SUBNETS=subnet-aaa,subnet-bbb}"
 SG_ID="${ECS_SECURITY_GROUPS:?Set ECS_SECURITY_GROUPS=sg-xxx}"
+export ACCOUNT
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 API_DIR="${API_DIR:-}"
@@ -78,8 +79,15 @@ ZIP="${BUILD_DIR}/function.zip"
 ENV_FILE="${BUILD_DIR}/lambda-env.json"
 SECRET_NAME="$SECRET_NAME" CLUSTER="$CLUSTER" TASK_DEF="$TASK_DEF" \
   SUBNET_CSV="$SUBNET_CSV" SG_ID="$SG_ID" \
+  ENABLE_PLANETILER="${ENABLE_PLANETILER:-false}" \
+  ENABLE_NOMINATIM="${ENABLE_NOMINATIM:-false}" \
+  MBTILES_S3_BUCKET="${MBTILES_S3_BUCKET:-}" \
+  NOMINATIM_PGHOST="${NOMINATIM_PGHOST:-}" \
+  NOMINATIM_PGPASSWORD="${NOMINATIM_PGPASSWORD:-}" \
   python3 - "$ENV_FILE" <<'PY'
 import json, os, sys
+account = os.environ.get("ACCOUNT", "")
+bucket = os.environ.get("MBTILES_S3_BUCKET") or (f"sigeo-map-{account}" if account else "")
 env = {"Variables": {
   "IMPORT_BACKEND": "ecs",
   "DB_SECRET_NAME": os.environ["SECRET_NAME"],
@@ -89,9 +97,19 @@ env = {"Variables": {
   "ECS_SECURITY_GROUPS": os.environ["SG_ID"],
   "ECS_ASSIGN_PUBLIC_IP": "ENABLED",
   "ECS_CONTAINER_NAME": "importer",
-  "CACHE_MB": "2048",
+  "CACHE_MB": "1024",
   "DEFAULT_AREA": "monaco",
   "PGSSLMODE": "require",
+  "ENABLE_OSM2PGSQL": "true",
+  "ENABLE_PLANETILER": os.environ.get("ENABLE_PLANETILER", "false"),
+  "ENABLE_NOMINATIM": os.environ.get("ENABLE_NOMINATIM", "false"),
+  "MBTILES_S3_BUCKET": bucket,
+  "MBTILES_S3_PREFIX": "mbtiles",
+  "NOMINATIM_PGHOST": os.environ.get("NOMINATIM_PGHOST", ""),
+  "NOMINATIM_PGUSER": "nominatim",
+  "NOMINATIM_PGDATABASE": "nominatim",
+  "NOMINATIM_PGPASSWORD": os.environ.get("NOMINATIM_PGPASSWORD", ""),
+  "PLANETILER_JAVA_OPTS": "-Xmx4g",
 }}
 json.dump(env, open(sys.argv[1], "w"))
 PY
@@ -127,10 +145,19 @@ API_ID="$(aws apigatewayv2 get-apis --region "$REGION" \
 if [[ -z "$API_ID" || "$API_ID" == "None" ]]; then
   API_ID="$(aws apigatewayv2 create-api --region "$REGION" --name "$API_NAME" \
     --protocol-type HTTP --cors-configuration '{
-      "AllowOrigins":["*"],"AllowMethods":["GET","POST","PUT","OPTIONS"],
-      "AllowHeaders":["content-type","authorization"],"MaxAge":300
+      "AllowOrigins":["*"],"AllowMethods":["GET","POST","PUT","OPTIONS","DELETE","PATCH","HEAD"],
+      "AllowHeaders":["content-type","authorization","x-requested-with"],"MaxAge":300
     }' --query ApiId --output text)"
 fi
+
+# Always (re)apply CORS — Lambda responses do not set ACAO (avoids duplicate headers).
+aws apigatewayv2 update-api --api-id "$API_ID" --region "$REGION" \
+  --cors-configuration '{
+    "AllowOrigins":["*"],
+    "AllowMethods":["GET","POST","PUT","OPTIONS","DELETE","PATCH","HEAD"],
+    "AllowHeaders":["content-type","authorization","x-requested-with"],
+    "MaxAge":300
+  }' >/dev/null
 
 INTEGRATION_ID="$(aws apigatewayv2 get-integrations --api-id "$API_ID" --region "$REGION" \
   --query "Items[0].IntegrationId" --output text 2>/dev/null || true)"
@@ -147,6 +174,31 @@ if [[ -z "$EXISTING_ROUTE" || "$EXISTING_ROUTE" == "None" ]]; then
     --route-key 'ANY /{proxy+}' --target "integrations/${INTEGRATION_ID}" >/dev/null
   aws apigatewayv2 create-route --api-id "$API_ID" --region "$REGION" \
     --route-key 'ANY /' --target "integrations/${INTEGRATION_ID}" >/dev/null || true
+fi
+
+# Public OPTIONS so JWT on ANY /{proxy+} does not block browser preflight
+for OPT_KEY in 'OPTIONS /{proxy+}' 'OPTIONS /'; do
+  OPT_ID="$(aws apigatewayv2 get-routes --api-id "$API_ID" --region "$REGION" \
+    --query "Items[?RouteKey=='${OPT_KEY}'].RouteId | [0]" --output text)"
+  if [[ -z "$OPT_ID" || "$OPT_ID" == "None" ]]; then
+    aws apigatewayv2 create-route --api-id "$API_ID" --region "$REGION" \
+      --route-key "$OPT_KEY" --authorization-type NONE >/dev/null || true
+  else
+    aws apigatewayv2 update-route --api-id "$API_ID" --region "$REGION" \
+      --route-id "$OPT_ID" --authorization-type NONE >/dev/null || true
+  fi
+done
+
+# Keep health public
+HEALTH_ID="$(aws apigatewayv2 get-routes --api-id "$API_ID" --region "$REGION" \
+  --query "Items[?RouteKey=='GET /api/health'].RouteId | [0]" --output text)"
+if [[ -z "$HEALTH_ID" || "$HEALTH_ID" == "None" ]]; then
+  aws apigatewayv2 create-route --api-id "$API_ID" --region "$REGION" \
+    --route-key 'GET /api/health' --target "integrations/${INTEGRATION_ID}" \
+    --authorization-type NONE >/dev/null || true
+else
+  aws apigatewayv2 update-route --api-id "$API_ID" --region "$REGION" \
+    --route-id "$HEALTH_ID" --authorization-type NONE >/dev/null || true
 fi
 
 STAGE="$(aws apigatewayv2 get-stages --api-id "$API_ID" --region "$REGION" \

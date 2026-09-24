@@ -32,11 +32,32 @@ aws iam put-role-policy --role-name "$EXEC_ROLE_NAME" --policy-name sigeo-map-se
 if ! aws iam get-role --role-name "$TASK_ROLE_NAME" >/dev/null 2>&1; then
   aws iam create-role --role-name "$TASK_ROLE_NAME" --assume-role-policy-document "$TRUST_ECS" >/dev/null
 fi
-aws iam put-role-policy --role-name "$TASK_ROLE_NAME" --policy-name sigeo-map-secrets \
-  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"secretsmanager:GetSecretValue\"],\"Resource\":[\"${SECRET_ARN}\",\"${SECRET_ARN}*\"]}]}"
 
 EXEC_ROLE_ARN="$(aws iam get-role --role-name "$EXEC_ROLE_NAME" --query Role.Arn --output text)"
 TASK_ROLE_ARN="$(aws iam get-role --role-name "$TASK_ROLE_NAME" --query Role.Arn --output text)"
+
+# Secrets + S3 (MBTiles only) 
+S3_BUCKET="${MBTILES_S3_BUCKET:-sigeo-map-${ACCOUNT}}"
+aws iam put-role-policy --role-name "$TASK_ROLE_NAME" --policy-name sigeo-map-task \
+  --policy-document "{
+    \"Version\":\"2012-10-17\",
+    \"Statement\":[
+      {\"Effect\":\"Allow\",\"Action\":[\"secretsmanager:GetSecretValue\"],\"Resource\":[\"${SECRET_ARN}\",\"${SECRET_ARN}*\"]},
+      {\"Effect\":\"Allow\",\"Action\":[\"s3:PutObject\",\"s3:GetObject\",\"s3:ListBucket\"],
+       \"Resource\":[\"arn:aws:s3:::${S3_BUCKET}\",\"arn:aws:s3:::${S3_BUCKET}/*\"]}
+    ]
+  }"
+
+# Create S3 bucket for Planetiler MBTiles if missing
+if ! aws s3api head-bucket --bucket "$S3_BUCKET" 2>/dev/null; then
+  if [[ "$REGION" == "us-east-1" ]]; then
+    aws s3api create-bucket --bucket "$S3_BUCKET" --region "$REGION" >/dev/null
+  else
+    aws s3api create-bucket --bucket "$S3_BUCKET" --region "$REGION" \
+      --create-bucket-configuration "LocationConstraint=${REGION}" >/dev/null
+  fi
+  echo "Created S3 bucket $S3_BUCKET"
+fi
 
 aws logs create-log-group --log-group-name "$LOG_GROUP" --region "$REGION" 2>/dev/null || true
 
@@ -102,7 +123,17 @@ TASK_DEF="$(cat <<EOF
       {"name": "PGSSLMODE", "value": "require"},
       {"name": "OSM_AREA", "value": "monaco"},
       {"name": "CACHE_MB", "value": "1024"},
-      {"name": "FLAT_NODES", "value": "true"}
+      {"name": "FLAT_NODES", "value": "true"},
+      {"name": "ENABLE_OSM2PGSQL", "value": "true"},
+      {"name": "ENABLE_PLANETILER", "value": "${ENABLE_PLANETILER:-false}"},
+      {"name": "ENABLE_NOMINATIM", "value": "${ENABLE_NOMINATIM:-false}"},
+      {"name": "MBTILES_S3_BUCKET", "value": "${S3_BUCKET}"},
+      {"name": "MBTILES_S3_PREFIX", "value": "mbtiles"},
+      {"name": "NOMINATIM_PGHOST", "value": "${RDSHOST}"},
+      {"name": "NOMINATIM_PGUSER", "value": "nominatim"},
+      {"name": "NOMINATIM_PGDATABASE", "value": "nominatim"},
+      {"name": "NOMINATIM_PGPASSWORD", "value": "${NOMINATIM_PGPASSWORD:-}"},
+      {"name": "PLANETILER_JAVA_OPTS", "value": "-Xmx4g"}
     ],
     "logConfiguration": {
       "logDriver": "awslogs",
@@ -126,9 +157,13 @@ echo "=== Setup complete ==="
 echo "Cluster:          $CLUSTER"
 echo "Task definition:  $TASK_FAMILY"
 echo "Fargate SG:       $SG_ID"
+echo "S3 bucket:        $S3_BUCKET"
 echo "Suggested subnets:$SUBNETS"
 echo
 echo "Next:"
 echo "  export ECS_SUBNETS=<pick-2-subnets>"
 echo "  export ECS_SECURITY_GROUPS=$SG_ID"
+echo "  export MBTILES_S3_BUCKET=$S3_BUCKET"
+echo "  # Optional: ENABLE_PLANETILER=true ENABLE_NOMINATIM=true (+ NOMINATIM_PGPASSWORD)"
 echo "  ./aws/deploy-control.sh"
+echo "  See docs/PIPELINE.md"

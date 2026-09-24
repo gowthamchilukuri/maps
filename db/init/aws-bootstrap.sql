@@ -19,9 +19,11 @@ VALUES (1, 'monaco', 12, true)
 ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS control.area_state (
-  area       text PRIMARY KEY,
-  md5        text,
-  updated_at timestamptz NOT NULL DEFAULT now()
+  area                   text PRIMARY KEY,
+  md5                    text,
+  mbtiles_s3_uri         text,
+  nominatim_imported_at  timestamptz,
+  updated_at             timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS control.jobs (

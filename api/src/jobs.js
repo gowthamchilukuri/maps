@@ -129,6 +129,46 @@ async function startImporterEcs(jobId, area, force = false) {
               { name: "CACHE_MB", value: process.env.CACHE_MB || "1024" },
               { name: "FLAT_NODES", value: flatNodesFor(area) },
               { name: "PGSSLMODE", value: process.env.PGSSLMODE || "require" },
+              {
+                name: "ENABLE_OSM2PGSQL",
+                value: process.env.ENABLE_OSM2PGSQL || "true",
+              },
+              {
+                name: "ENABLE_PLANETILER",
+                value: process.env.ENABLE_PLANETILER || "false",
+              },
+              {
+                name: "ENABLE_NOMINATIM",
+                value: process.env.ENABLE_NOMINATIM || "false",
+              },
+              {
+                name: "MBTILES_S3_BUCKET",
+                value: process.env.MBTILES_S3_BUCKET || "",
+              },
+              {
+                name: "MBTILES_S3_PREFIX",
+                value: process.env.MBTILES_S3_PREFIX || "mbtiles",
+              },
+              {
+                name: "NOMINATIM_PGHOST",
+                value: process.env.NOMINATIM_PGHOST || "",
+              },
+              {
+                name: "NOMINATIM_PGUSER",
+                value: process.env.NOMINATIM_PGUSER || "nominatim",
+              },
+              {
+                name: "NOMINATIM_PGPASSWORD",
+                value: process.env.NOMINATIM_PGPASSWORD || "",
+              },
+              {
+                name: "NOMINATIM_PGDATABASE",
+                value: process.env.NOMINATIM_PGDATABASE || "nominatim",
+              },
+              {
+                name: "PLANETILER_JAVA_OPTS",
+                value: process.env.PLANETILER_JAVA_OPTS || "-Xmx4g",
+              },
             ],
           },
         ],

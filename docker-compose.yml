@@ -46,12 +46,38 @@ services:
       CACHE_MB: ${CACHE_MB:-2048}
       FORCE: ${FORCE:-false}
       JOB_ID: ${JOB_ID:-}
+      ENABLE_OSM2PGSQL: ${ENABLE_OSM2PGSQL:-true}
+      ENABLE_PLANETILER: ${ENABLE_PLANETILER:-false}
+      ENABLE_NOMINATIM: ${ENABLE_NOMINATIM:-false}
+      ENABLE_PLANETILER_UPLOAD: ${ENABLE_PLANETILER_UPLOAD:-false}
+      MBTILES_S3_BUCKET: ${MBTILES_S3_BUCKET:-}
+      NOMINATIM_PGHOST: ${NOMINATIM_PGHOST:-postgis}
+      NOMINATIM_PGUSER: ${NOMINATIM_PGUSER:-nominatim}
+      NOMINATIM_PGPASSWORD: ${NOMINATIM_PGPASSWORD:-${POSTGRES_PASSWORD:-changeme}}
+      NOMINATIM_PGDATABASE: ${NOMINATIM_PGDATABASE:-nominatim}
+      PLANETILER_JAVA_OPTS: ${PLANETILER_JAVA_OPTS:--Xmx2g}
     volumes:
       - ./data/pbf:/pbf
       - ./data/import-tmp:/tmp/osm2pgsql
+      - ./data/mbtiles:/tmp/planetiler
     depends_on:
       postgis:
         condition: service_healthy
+    networks: [app-net]
+
+  # Optional local lab only — NOT part of AWS deploy. Prefer import-into-RDS path (docs/PIPELINE.md).
+  # This image bundles its own Postgres; we do not run Nominatim HTTP in production here.
+  nominatim-lab:
+    profiles: ["nominatim-lab"]
+    image: mediagis/nominatim:4.4
+    environment:
+      PBF_PATH: /nominatim/data/${OSM_AREA:-monaco}-latest.osm.pbf
+      NOMINATIM_PASSWORD: ${NOMINATIM_PASSWORD:-nominatim}
+    ports:
+      - "${NOMINATIM_PORT:-8088}:8080"
+    volumes:
+      - ./data/pbf:/nominatim/data:ro
+      - nominatim_data:/var/lib/postgresql/14/main
     networks: [app-net]
 
   api:
@@ -78,6 +104,7 @@ services:
 
 volumes:
   postgis_data:
+  nominatim_data:
 
 networks:
   app-net:
